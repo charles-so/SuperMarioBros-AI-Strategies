@@ -33,7 +33,7 @@ This script will automatically detect, create and activate conda environment bas
 #### Step 3: Create a virtual environment for the project
 ```bash
     # set up for intel
-    conda env create -n mario_venv_intel64 -f ./environments/mario_venv_x64.yaml
+    conda env create -n mario_venv_intelx64 -f ./environments/mario_venv_x64.yaml
     # set up for apple-sillicon
     conda env create -n mario_venv_arm64 -f ./environments/mario_venv_arm64.yaml
 ```

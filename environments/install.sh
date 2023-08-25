@@ -25,7 +25,7 @@ echo
 if [ "$architecture" == "x86_64" ]; then
     echo "Detected Intel architecture. Creating Intel conda environment."
     echo
-    conda env create -n mario_venv_intel64 -f ./environments/mario_venv_x64.yaml
+    conda env create -n mario_venv_intelx64 -f ./environments/mario_venv_x64.yaml
     conda activate mario_venv_intel64
     echo
     echo "'mario_venv_intel64' successfully created."

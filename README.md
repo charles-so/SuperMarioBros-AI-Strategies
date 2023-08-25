@@ -55,9 +55,9 @@ install packages
 export environment
 ```bash
     # intel
-    conda env export > ./environments/mario_venv_x64.yaml
+    conda env export --no-builds > ./environments/mario_venv_x64.yaml
     # apple-sillicon
-    conda env export > ./environments/mario_venv_arm64.yaml
+    conda env export --no-builds > ./environments/mario_venv_arm64.yaml
 ```
 remove the conda environment
 ```bash

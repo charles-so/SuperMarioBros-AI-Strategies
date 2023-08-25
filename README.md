@@ -40,7 +40,7 @@ This script will automatically detect, create and activate conda environment bas
 #### Step 4: Activate your virtual environment
 ```bash
     # intel
-    conda activate mario_venv_intel64
+    conda activate mario_venv_intelx64
     # apple-sillicon
     conda activate mario_venv_arm64
 ```

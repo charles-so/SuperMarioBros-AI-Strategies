@@ -15,6 +15,8 @@ Note: Conda is often distributed with the Anaconda distribution, which includes 
 #### Download Miniconda Installer: https://docs.conda.io/en/latest/miniconda.html
 ### Method one (`install.sh`):
 This script will automatically detect, create and activate conda environment based on your system architecture.
+
+Note: It is designed for UNIX platforms (Linux / MacOS). Not compatible with Windows Powershell. If you are using Windows, try using Git Bash to work around it or follow the manual installation guide.
 ```bash
    # give permission to execute
    chmod +x ./environments/install.sh

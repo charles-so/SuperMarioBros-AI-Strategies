@@ -6,6 +6,7 @@ from gym.wrappers import FrameStack
 import numpy as np
 import tensorflow as tf
 from gym.spaces import Box
+import matplotlib.pyplot as plt
 
 class SkipFrame(gym.Wrapper):
     def __init__(self, env, skip):
@@ -18,11 +19,11 @@ class SkipFrame(gym.Wrapper):
         total_reward = 0.0
         for i in range(self._skip):
             # Accumulate reward and repeat the same action
-            obs, reward, done, info = self.env.step(action)
+            obs, reward, done, truncated, info = self.env.step(action)
             total_reward += reward
             if done:
                 break
-        return obs, total_reward, done, info
+        return obs, total_reward, done, truncated, info
 
 class GrayScaleObservation(gym.ObservationWrapper):
     def __init__(self, env):
@@ -37,32 +38,38 @@ class GrayScaleObservation(gym.ObservationWrapper):
         return observation
 
     def observation(self, observation):
-        observation = self.permute_orientation(observation)
+        #print(f"Original observation shape: {observation.shape}")  # Debug line
+        observation = tf.convert_to_tensor(observation, dtype=tf.float32)
+        #print(f"Shape after permute_orientation: {observation.shape}")  # Debug line
         observation = tf.image.rgb_to_grayscale(observation)
+        # plt.imshow(observation, cmap='gray')
+        # plt.title("Original Frame")
+        # plt.axis('off')
+        # plt.show()
+        # plt.pause(5)
+
         return observation
+    
 
-class ResizeObservation(gym.ObservationWrapper):
-    def __init__(self, env, shape):
+class DownSampleObservation(gym.ObservationWrapper):
+    def __init__(self, env, downsample_rate):
         super().__init__(env)
-        if isinstance(shape, int):
-            self.shape = (shape, shape)
-        else:
-            self.shape = tuple(shape)
-
-        obs_shape = self.shape + self.observation_space.shape[2:]
-        self.observation_space = Box(low=0, high=255, shape=obs_shape, dtype=np.uint8)
+        self.downsample_rate = downsample_rate
+        obs_shape = self.observation_space.shape
+        # New shape after downsampling
+        new_shape = (obs_shape[0] // downsample_rate, obs_shape[1] // downsample_rate, obs_shape[2])
+        self.observation_space = Box(low=0, high=255, shape=new_shape, dtype=np.uint8)
 
     def observation(self, observation):
-        observation = tf.image.resize(observation, self.shape)
-        observation = tf.squeeze(observation, axis=0)
+        # Downsample the observation by taking every nth pixel in each dimension
+        observation = observation[::self.downsample_rate, ::self.downsample_rate, :]
         return observation
+    
+
+
 
 # Assume `env` is your original environment
 # Apply Wrappers to environment
-env = SkipFrame(env, skip=4)
-env = GrayScaleObservation(env)
-env = ResizeObservation(env, shape=84)
-env = FrameStack(env, num_stack=4)
 
 # if gym.__version__ < '0.26':
 #     env = FrameStack(env, num_stack=4, new_step_api=True)

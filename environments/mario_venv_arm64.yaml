@@ -1,6 +1,7 @@
 name: mario_venv_arm64
 channels:
   - defaults
+  - conda-forge
 dependencies:
   - bzip2=1.0.8
   - ca-certificates=2023.05.30
@@ -24,6 +25,7 @@ dependencies:
       - gym-super-mario-bros==7.4.0
       - nes-py==8.2.1
       - numpy==1.25.2
+      - opencv-python==4.8.0.76
       - pyglet==1.5.21
       - tqdm==4.66.1
-prefix: /Users/charles/miniconda3/envs/mario_venv_arm64
+prefix: /Users/charleso/miniforge3/envs/mario_venv_arm64

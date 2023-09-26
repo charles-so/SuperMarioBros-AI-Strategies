@@ -1,0 +1,9 @@
+cloudpickle==2.2.1
+gym==0.26.2
+gym-notices==0.0.8
+gym-super-mario-bros==7.4.0
+nes-py==8.2.1
+numpy==1.26.0
+opencv-python==4.8.0.76
+pyglet==1.5.21
+tqdm==4.66.1

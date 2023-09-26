@@ -227,7 +227,7 @@ dependencies:
       - gym-notices==0.0.8
       - gym-super-mario-bros==7.4.0
       - nes-py==8.2.1
-      - pygame==2.6.0.dev1
+      - pygame==2.5.1
       - pyglet==1.5.21
       - tqdm==4.66.1
 prefix: C:\Users\LikeA\miniconda3\envs\strat_mario

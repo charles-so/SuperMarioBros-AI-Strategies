@@ -128,6 +128,7 @@ ENV/
 env.bak/
 venv.bak/
 new_mario/
+new_mario_w/
 
 # Spyder project settings
 .spyderproject

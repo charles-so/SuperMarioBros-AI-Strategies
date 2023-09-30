@@ -286,7 +286,7 @@ def make_action(screen, info, prev_action):
     # check if there is a platform beneath him, if not, he will perform a high jump
     road_ahead = get_road_ahead(mario_location, block_locations)
     if not road_ahead:
-        need_high_jump = True
+        _high_jump = True
         return 4
     
     # a dict containing all the objects mario can see (within specified x, y range)

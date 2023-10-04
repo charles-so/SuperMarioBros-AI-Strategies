@@ -267,7 +267,7 @@ def make_action(screen, info, step, env, prev_action):
             return 2
 
     # enable mario to perform low jump [deafult: low jump, unless we set 'need_high_jump' to True]
-    if prev_action == 2 and need_long_jump == False:
+    if prev_action == 2 and need_high_jump == False:
         return 0 
     
     # mario will first prioritize his safety first (check gap -> enemy -> any kind of block)

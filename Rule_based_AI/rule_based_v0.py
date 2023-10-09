@@ -7,6 +7,8 @@ import numpy as np
 # gobal variables
 need_high_jump = False
 high_jump_duration = 0
+# for q learning testing purpose
+# jumping = False
 
 ################################################################################
 # TEMPLATES FOR LOCATING OBJECTS by Lauren Gee
@@ -183,10 +185,16 @@ def extract_object_details(locations):
     # obj on screen position: x,y, obj dimension: w,h, obj name: str
     return locations[0][0], locations[0][1], locations[0][2]
 
-def _compute_bounds(mario_location, horizontal_range, vertical_range=None, inverted=False):
-    # start at mario's x-position
-    start_x = mario_location[0]
-    end_x = mario_location[0] + horizontal_range
+def _compute_bounds(mario_location, horizontal_range, vertical_range=None, inverted=False, extended_range=False):
+
+    # special consideration for pipe detection
+    if extended_range:
+        start_x = mario_location[0] - horizontal_range
+        end_x = mario_location[0] + horizontal_range
+    else:
+        # start at mario's x-position
+        start_x = mario_location[0]
+        end_x = mario_location[0] + horizontal_range
     
     if vertical_range is None:
         return start_x, end_x
@@ -228,23 +236,43 @@ def get_items_in_front_of_mario(mario_location, enemy_locations, block_locations
     return {"enemy": enemy_list, "pipe": pipe_list, "block": block_list}
 
 # check if there is a gap in front of mario
-def get_road_ahead(mario_location, block_locations, horizontal_range=32, vertical_range=16):
-
-    start_x, end_x, lower_y, upper_y = _compute_bounds(mario_location, horizontal_range, vertical_range, inverted=True)
-
+def get_road_ahead(mario_location, block_locations, horizontal_range=15, vertical_range=16):
     # Look for a brick immediately below Mario and within the specified x range
+    start_x, end_x, lower_y, upper_y = _compute_bounds(mario_location, horizontal_range, vertical_range, inverted=True)
     block_below_mario = [block for block in block_locations if block[2] == 'block' and start_x <= block[0][0] <= end_x and upper_y <= block[0][1] <= lower_y]
     return block_below_mario
 
 # prevent mario jumping off screen (index error)
 def mario_jumping_off_screen(mario_location):
-    return mario_location[1] <= 40
+    return mario_location[1] <= 60
+
+# check if mario is currently in the air
+def mario_in_the_air(road_ahead, prev_action):
+    return not road_ahead and prev_action == 2
+
+# check if mario is currently jumping / in the sky (for q learning testing purpose)
+def is_mario_jumping(mario_location, enemy_locations, block_locations, prev_action, horizontal_range=15, vertical_range=16):
+    # Look for a brick immediately below Mario and within the specified x range
+    start_x, end_x, lower_y, upper_y = _compute_bounds(mario_location, horizontal_range, vertical_range, inverted=True)
+    block_below_mario = [block for block in block_locations if block[2] == 'block' and start_x <= block[0][0] <= end_x and upper_y <= block[0][1] <= lower_y]
+    
+    # Look for a enemy immediately below Mario and within the specified x range
+    start_x, end_x, lower_y, upper_y = _compute_bounds(mario_location, horizontal_range, vertical_range, inverted=True)
+    enemy_below_mario = [enemy for enemy in enemy_locations if start_x <= enemy[0][0] <= end_x and upper_y <= enemy[0][1] <= lower_y]
+
+    # Look for a pipe immediately below Mario and within the specified x range
+    start_x, end_x, lower_y, upper_y = _compute_bounds(mario_location, horizontal_range=32, vertical_range=vertical_range, inverted=True, extended_range=True)
+    pipe_below_mario = [block for block in block_locations if block[2] == 'pipe' and start_x <= block[0][0] <= end_x and upper_y <= block[0][1] <= lower_y]
+    
+    return not (block_below_mario or enemy_below_mario or pipe_below_mario) and prev_action == 2
 
 # ################################################################################
 def make_action(screen, info, step, env, prev_action):
 
     global need_high_jump
     global high_jump_duration
+    # for q learning testing
+    # global jumping
 
     mario_status = info["status"]
     object_locations = locate_objects(screen, mario_status)
@@ -252,6 +280,8 @@ def make_action(screen, info, step, env, prev_action):
     mario_location, mario_dimension, mario_name = extract_object_details(mario_locations)
 
     # dont change the codes' order to keep the frame rate consistent
+    # for q learning testing
+    # jumping= is_mario_jumping(mario_location, enemy_locations, block_locations, prev_action)
 
     # mario first check if he need to perform a high jump, if yes, he will continue holding down the 'jump' button
     if need_high_jump:
@@ -265,21 +295,22 @@ def make_action(screen, info, step, env, prev_action):
             return 0
         else:
             return 2
-
+    
     # enable mario to perform low jump [deafult: low jump, unless we set 'need_high_jump' to True]
-    if prev_action == 2 and need_high_jump == False:
-        return 0 
+    if prev_action == 2:
+        return 0
     
     # mario will first prioritize his safety first (check gap -> enemy -> any kind of block)
     
     # check if there is a platform beneath him, if not, he will perform a high jump
+    # road_ahead = get_road_ahead(mario_location, block_locations)
     road_ahead = get_road_ahead(mario_location, block_locations)
     if not road_ahead:
         need_high_jump = True
         return 2
     
     # a dict containing all the objects mario can see (within specified x, y range)
-    mario_can_see = get_items_in_front_of_mario(mario_location, enemy_locations, block_locations, 40, 36)
+    mario_can_see = get_items_in_front_of_mario(mario_location, enemy_locations, block_locations, 42, 36)
     if mario_can_see["enemy"]:
         return 2
     if mario_can_see["pipe"]:

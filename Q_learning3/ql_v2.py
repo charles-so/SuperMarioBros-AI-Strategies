@@ -180,10 +180,16 @@ def extract_object_details(locations):
     # obj on screen position: x,y, obj dimension: w,h, obj name: str
     return locations[0][0], locations[0][1], locations[0][2]
 
-def _compute_bounds(mario_location, horizontal_range, vertical_range=None, inverted=False):
-    # start at mario's x-position
-    start_x = mario_location[0]
-    end_x = mario_location[0] + horizontal_range
+def _compute_bounds(mario_location, horizontal_range, vertical_range=None, inverted=False, extended_range=False):
+
+    # special consideration for pipe detection
+    if extended_range:
+        start_x = mario_location[0] - horizontal_range
+        end_x = mario_location[0] + horizontal_range
+    else:
+        # start at mario's x-position
+        start_x = mario_location[0]
+        end_x = mario_location[0] + horizontal_range
     
     if vertical_range is None:
         return start_x, end_x
@@ -266,7 +272,7 @@ def load_q_table(filename='q_table.pkl'):
         with open(filename, 'rb') as f:
             return pickle.load(f)
     except FileNotFoundError:
-        return np.zeros((5, 7))
+        return np.zeros((6, 7))
 
 # Hyperparameters
 # learning rate: A value of 1 would mean the Q-values are completely replaced by new values, while a value of 0 would mean the Q-values are not updated at all.
@@ -296,7 +302,7 @@ def get_state(screen, info, step, env, prev_action):
         return 1
     
     # state 2 -> mario sees an enemy
-    mario_can_see = get_items_in_front_of_mario(mario_location, enemy_locations, block_locations, 40, 36)
+    mario_can_see = get_items_in_front_of_mario(mario_location, enemy_locations, block_locations, 32, 36)
     if mario_can_see["enemy"]:
         return 2
     

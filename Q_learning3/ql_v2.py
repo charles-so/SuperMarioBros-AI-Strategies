@@ -180,29 +180,30 @@ def extract_object_details(locations):
     # obj on screen position: x,y, obj dimension: w,h, obj name: str
     return locations[0][0], locations[0][1], locations[0][2]
 
-def _compute_bounds(mario_location, horizontal_range, vertical_range=None, inverted=False, extended_range=False):
-
-    # special consideration for pipe detection
-    if extended_range:
-        start_x = mario_location[0] - horizontal_range
+def _compute_bounds(mario_location, horizontal_range, vertical_range=None, inverted=False, check_right_only=False, check_full_vertical_range=False):
+    if check_right_only:
+        start_x = mario_location[0]
         end_x = mario_location[0] + horizontal_range
     else:
-        # start at mario's x-position
-        start_x = mario_location[0]
+        start_x = mario_location[0] - horizontal_range
         end_x = mario_location[0] + horizontal_range
     
     if vertical_range is None:
         return start_x, end_x
-    
-    # start at mario's head to that + vertical_range (the origin at the left cornor so higher y = deeper)
-    if inverted:
+
+    if check_full_vertical_range:
+        lower_y = mario_location[1] + vertical_range
+        upper_y = mario_location[1] - vertical_range
+    elif inverted:
         lower_y = mario_location[1] + vertical_range
         upper_y = mario_location[1]
     else:
         lower_y = mario_location[1]
         upper_y = lower_y - vertical_range
-    
+
     return start_x, end_x, lower_y, upper_y
+
+
 
 def _compute_observable_items(start_x, end_x, item_locations, lower_y, upper_y, item_name=None):
     if item_name is None: # search for everything
@@ -231,20 +232,30 @@ def get_items_in_front_of_mario(mario_location, enemy_locations, block_locations
     return {"enemy": enemy_list, "pipe": pipe_list, "block": block_list}
 
 # check if there is a gap in front of mario
-def get_road_ahead(mario_location, block_locations, horizontal_range, vertical_range=16):
+def gap_ahead(mario_location, enemy_locations, block_locations, horizontal_range, vertical_range=50):
 
-    start_x, end_x, lower_y, upper_y = _compute_bounds(mario_location, horizontal_range, vertical_range, inverted=True)
+    start_x, end_x, lower_y, upper_y = _compute_bounds(mario_location, horizontal_range, vertical_range, inverted=True, check_right_only=True)
 
     # Look for a brick immediately below Mario and within the specified x range
     block_below_mario = [block for block in block_locations if block[2] == 'block' and start_x <= block[0][0] <= end_x and upper_y <= block[0][1] <= lower_y]
-    return block_below_mario
+    
+    # Look for an enemy immediately below Mario and within the specified x range
+    start_x, end_x, lower_y, upper_y = _compute_bounds(mario_location, horizontal_range=30, vertical_range=50, inverted=True)
+    enemy_below_mario = [enemy for enemy in enemy_locations if start_x <= enemy[0][0] <= end_x and upper_y <= enemy[0][1] <= lower_y]
 
-# prevent mario jumping off screen (index error)
-def mario_jumping_off_screen(mario_location):
-    return mario_location[1] <= 40
+    # Look for a pipe immediately below Mario and within the specified x range
+    start_x, end_x, lower_y, upper_y = _compute_bounds(mario_location, horizontal_range=50, vertical_range=50, inverted=True, check_full_vertical_range=True)
+    pipe_below_mario = [block for block in block_locations if block[2] == 'pipe' and start_x <= block[0][0] <= end_x and upper_y <= block[0][1] <= lower_y]
+    
+    # Return false if there's an enemy or pipe below Mario
+    if enemy_below_mario or pipe_below_mario:
+        return False
+    
+    # Return true if there's no block below Mario
+    return not block_below_mario
 
-# check if mario is currently jumping / in the sky
-def mario_is_jumping(mario_location, enemy_locations, block_locations, prev_action, horizontal_range=15, vertical_range=16):
+# check if mario is currently jumping / in the sky (for q learning testing purpose)
+def mario_in_mid_air(mario_location, enemy_locations, block_locations, horizontal_range=15, vertical_range=16):
     # Look for a brick immediately below Mario and within the specified x range
     start_x, end_x, lower_y, upper_y = _compute_bounds(mario_location, horizontal_range, vertical_range, inverted=True)
     block_below_mario = [block for block in block_locations if block[2] == 'block' and start_x <= block[0][0] <= end_x and upper_y <= block[0][1] <= lower_y]
@@ -254,10 +265,10 @@ def mario_is_jumping(mario_location, enemy_locations, block_locations, prev_acti
     enemy_below_mario = [enemy for enemy in enemy_locations if start_x <= enemy[0][0] <= end_x and upper_y <= enemy[0][1] <= lower_y]
 
     # Look for a pipe immediately below Mario and within the specified x range
-    start_x, end_x, lower_y, upper_y = _compute_bounds(mario_location, horizontal_range=32, vertical_range=vertical_range, inverted=True, extended_range=True)
+    start_x, end_x, lower_y, upper_y = _compute_bounds(mario_location, horizontal_range=32, vertical_range=vertical_range, inverted=True)
     pipe_below_mario = [block for block in block_locations if block[2] == 'pipe' and start_x <= block[0][0] <= end_x and upper_y <= block[0][1] <= lower_y]
     
-    return not (block_below_mario or enemy_below_mario or pipe_below_mario) and prev_action == 2
+    return not (block_below_mario or enemy_below_mario or pipe_below_mario)
 
 # ################################################################################
 # Q Learning
@@ -292,13 +303,12 @@ def get_state(screen, info, step, env, prev_action):
     
     # mario will first prioritize his safety first (check gap -> enemy -> any kind of block)
 
-    # state 0 -> mario is currently in the sky
-    if mario_is_jumping(mario_location, enemy_locations, block_locations, prev_action):
+    # state 0 -> mario is currently in mid air
+    if mario_in_mid_air(mario_location, enemy_locations, block_locations):
         return 0
     
     # state 1 -> mario sees a gap in front of him 
-    road_ahead = get_road_ahead(mario_location, block_locations, 15)
-    if not road_ahead:
+    if gap_ahead(mario_location, enemy_locations, block_locations, 32):
         return 1
     
     # state 2 -> mario sees an enemy
@@ -336,9 +346,13 @@ def make_action(obs, info, step, env, prev_action):
     return action, terminated, truncated, info
 
 def print_q_table():
+    state_names = ["Mid-Air", "Gap-R", "Enemy-LR", "Pipe-LR", "Block-LR", "Default"]
+    
     print("Current Q-table:")
     for i, row in enumerate(Q):
-        print(f"State {i}: {row}")
+        state_name = state_names[i] if i < len(state_names) else f"State {i}"
+        print(f"{state_name}: {row}")
+
 
 ################################################################################
 

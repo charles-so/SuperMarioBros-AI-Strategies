@@ -4,16 +4,11 @@ import gym
 import cv2 as cv
 import numpy as np
 
-import random
-import time
-import pickle
-
-import cProfile
-from concurrent.futures import ThreadPoolExecutor
-
 # gobal variables
 need_high_jump = False
 high_jump_duration = 0
+# for q learning testing purpose
+# jumping = False
 
 ################################################################################
 # TEMPLATES FOR LOCATING OBJECTS by Lauren Gee
@@ -148,38 +143,37 @@ def _locate_pipe(screen, threshold=MATCH_THRESHOLD):
                 break
     return locations
 
-def parallel_locate_object(screen, category, category_templates, mario_status):
-    category_items = []
-    stop_early = False
-    for object_name in category_templates:
-        if category == "mario":
-            if object_name != mario_status:
-                continue
-            else:
-                stop_early = True
-        if object_name == "pipe":
-            continue
-        results = _locate_object(screen, category_templates[object_name], stop_early)
-        for location, dimensions in results:
-            category_items.append((location, dimensions, object_name))
-    return category, category_items
-
 def locate_objects(screen, mario_status):
+    # convert to greyscale
     screen = cv.cvtColor(screen, cv.COLOR_BGR2GRAY)
+
+    # iterate through our templates data structure
     object_locations = {}
+    for category in templates:
+        category_templates = templates[category]
+        category_items = []
+        stop_early = False
+        for object_name in category_templates:
+            # use mario_status to determine which type of mario to look for
+            if category == "mario":
+                if object_name != mario_status:
+                    continue
+                else:
+                    stop_early = True
+            # pipe has special logic, so skip it for now
+            if object_name == "pipe":
+                continue
+            
+            # find locations of objects
+            results = _locate_object(screen, category_templates[object_name], stop_early)
+            for location, dimensions in results:
+                category_items.append((location, dimensions, object_name))
 
-    with ThreadPoolExecutor() as executor:
-        futures = []
-        for category in templates:
-            category_templates = templates[category]
-            future = executor.submit(parallel_locate_object, screen, category, category_templates, mario_status)
-            futures.append(future)
+        object_locations[category] = category_items
 
-        for future in futures:
-            category, category_items = future.result()
-            object_locations[category] = category_items
-
+    # locate pipes
     object_locations["block"] += _locate_pipe(screen)
+
     return object_locations
 
 # ################################################################################
@@ -191,10 +185,16 @@ def extract_object_details(locations):
     # obj on screen position: x,y, obj dimension: w,h, obj name: str
     return locations[0][0], locations[0][1], locations[0][2]
 
-def _compute_bounds(mario_location, horizontal_range, vertical_range=None, inverted=False):
-    # start at mario's x-position
-    start_x = mario_location[0]
-    end_x = mario_location[0] + horizontal_range
+def _compute_bounds(mario_location, horizontal_range, vertical_range=None, inverted=False, extended_range=False):
+
+    # special consideration for pipe detection
+    if extended_range:
+        start_x = mario_location[0] - horizontal_range
+        end_x = mario_location[0] + horizontal_range
+    else:
+        # start at mario's x-position
+        start_x = mario_location[0]
+        end_x = mario_location[0] + horizontal_range
     
     if vertical_range is None:
         return start_x, end_x
@@ -236,35 +236,75 @@ def get_items_in_front_of_mario(mario_location, enemy_locations, block_locations
     return {"enemy": enemy_list, "pipe": pipe_list, "block": block_list}
 
 # check if there is a gap in front of mario
-def get_road_ahead(mario_location, block_locations, horizontal_range=32, vertical_range=16):
-
-    start_x, end_x, lower_y, upper_y = _compute_bounds(mario_location, horizontal_range, vertical_range, inverted=True)
-
+def get_road_ahead(mario_location, block_locations, horizontal_range=15, vertical_range=16):
     # Look for a brick immediately below Mario and within the specified x range
+    start_x, end_x, lower_y, upper_y = _compute_bounds(mario_location, horizontal_range, vertical_range, inverted=True)
     block_below_mario = [block for block in block_locations if block[2] == 'block' and start_x <= block[0][0] <= end_x and upper_y <= block[0][1] <= lower_y]
     return block_below_mario
 
 # prevent mario jumping off screen (index error)
 def mario_jumping_off_screen(mario_location):
-    return mario_location[1] <= 40
+    return mario_location[1] <= 60
+
+# check if mario is currently in the air
+def mario_in_the_air(road_ahead, prev_action):
+    return not road_ahead and prev_action == 2
+
+block_width = 16
+
+# Define a function to detect gaps in the floor
+def detect_gaps(blocks, mario_y):
+    print(blocks)
+    print(mario_y)
+    blocks = sorted([block for block in blocks if block[0][1] == 224 and block[2] == 'block'], key=lambda x: x[0][0])
+    gaps = []
+    gap_start = None
+    for i in range(len(blocks) - 1):
+        # Extract x and y coordinates of the current and next block
+        x1, y1 = blocks[i][0]
+        x2, y2 = blocks[i+1][0]
+        # Check for start of a gap or continuation of an existing gap
+        if x2 - x1 > block_width and y1 > mario_y and y2 > mario_y:
+            return True
+ 
+            
+    return False
+
+# check if mario is currently jumping / in the sky (for q learning testing purpose)
+def is_mario_jumping(mario_location, enemy_locations, block_locations, prev_action, horizontal_range=15, vertical_range=16):
+    # Look for a brick immediately below Mario and within the specified x range
+    start_x, end_x, lower_y, upper_y = _compute_bounds(mario_location, horizontal_range, vertical_range, inverted=True)
+    block_below_mario = [block for block in block_locations if block[2] == 'block' and start_x <= block[0][0] <= end_x and upper_y <= block[0][1] <= lower_y]
+    
+    # Look for a enemy immediately below Mario and within the specified x range
+    start_x, end_x, lower_y, upper_y = _compute_bounds(mario_location, horizontal_range, vertical_range, inverted=True)
+    enemy_below_mario = [enemy for enemy in enemy_locations if start_x <= enemy[0][0] <= end_x and upper_y <= enemy[0][1] <= lower_y]
+
+    # Look for a pipe immediately below Mario and within the specified x range
+    start_x, end_x, lower_y, upper_y = _compute_bounds(mario_location, horizontal_range=32, vertical_range=vertical_range, inverted=True, extended_range=True)
+    pipe_below_mario = [block for block in block_locations if block[2] == 'pipe' and start_x <= block[0][0] <= end_x and upper_y <= block[0][1] <= lower_y]
+    
+    return not (block_below_mario or enemy_below_mario or pipe_below_mario) and prev_action == 2
 
 # ################################################################################
-def make_action(screen, info, prev_action):
+def make_action(screen, info, step, env, prev_action):
 
     global need_high_jump
     global high_jump_duration
+    # for q learning testing
+    # global jumping
 
     mario_status = info["status"]
     object_locations = locate_objects(screen, mario_status)
     mario_locations, enemy_locations, block_locations, item_locations = extract_object_locations(object_locations)
-
-    if not mario_locations:
-        print("Mario not found!")
-        return 8  # Replace with your default action or handling logic
-    
     mario_location, mario_dimension, mario_name = extract_object_details(mario_locations)
 
+    print(detect_gaps(block_locations, mario_location[1]))
+    input("hi")
+
     # dont change the codes' order to keep the frame rate consistent
+    # for q learning testing
+    # jumping= is_mario_jumping(mario_location, enemy_locations, block_locations, prev_action)
 
     # mario first check if he need to perform a high jump, if yes, he will continue holding down the 'jump' button
     if need_high_jump:
@@ -275,191 +315,54 @@ def make_action(screen, info, prev_action):
         # hold down the 'jump' button for 20 loops
         if high_jump_duration % 20 == 0:
             need_high_jump = False
-            return 1
+            return 0
         else:
             return 2
-
+    
     # enable mario to perform low jump [deafult: low jump, unless we set 'need_high_jump' to True]
-    if prev_action == 2 and need_long_jump == False:
-        return 3
+    if prev_action == 2:
+        return 0
     
     # mario will first prioritize his safety first (check gap -> enemy -> any kind of block)
     
     # check if there is a platform beneath him, if not, he will perform a high jump
+    # road_ahead = get_road_ahead(mario_location, block_locations)
     road_ahead = get_road_ahead(mario_location, block_locations)
     if not road_ahead:
         need_high_jump = True
-        return 4
+        return 2
     
     # a dict containing all the objects mario can see (within specified x, y range)
-    mario_can_see = get_items_in_front_of_mario(mario_location, enemy_locations, block_locations, 40, 36)
+    mario_can_see = get_items_in_front_of_mario(mario_location, enemy_locations, block_locations, 42, 36)
     if mario_can_see["enemy"]:
-        return 5
+        return 2
     if mario_can_see["pipe"]:
         need_high_jump = True
-        return 6
+        return 2
     if mario_can_see["block"]:
-        return 7
+        return 2
 
-    # Default Move
-    return 8
+    # Deafult Move
+    return 1
 
 ################################################################################
 
-pr = cProfile.Profile()
-
-env = gym.make("SuperMarioBros-v0", apply_api_compatibility=True)  
+env = gym.make("SuperMarioBros-v0", apply_api_compatibility=True, render_mode="human")
 env = JoypadSpace(env, SIMPLE_MOVEMENT)
 
-action_space_size = env.action_space.n
-
-# Creating a q-table
-# Key: state, Value: action list with q-values
-# Should be 8
-
-n = 9  # Number of keys/states
-p = action_space_size  # Number of actions
-
-q_table = {i: np.zeros(p) for i in range(n)}
-
-#Number of episodes
-num_episodes = 2000
-#Max number of steps per episode
-max_steps_per_episode = 1000
-
-learning_rate = 0.1
-discount_rate = 0.99
-
-#Greedy strategy
-exploration_rate = 1
-max_exploration_rate = 1
-min_exploration_rate = 0.01
-exploration_decay_rate = 0.001
-
-# Observation Wrappers
-frame_skip = 5 # skip n frames per action
-
-rewards_all_episodes = [] #List to contain all the rewards of all the episodes given to the agent
-
-# Q-learning algorithm 
-for episode in range(num_episodes):
-    print("Episode: " + str(episode))
-    if episode % 25 == 0:
-        avg_reward = sum(rewards_all_episodes[-25:])/25
-        print(f"Average reward for last 25 episodes: {avg_reward}")
-
-    # initialize new episode params
-    env.reset()
-
-    done = False
-    rewards_current_episode = 0
-
-    obs = None
-    need_long_jump = False
-    action = 0 # default action
-
-    pr.enable()
-
-    for step in range(max_steps_per_episode):
-
-        if obs is not None:
-            state = make_action(obs, info, action)
-        else:
-            state = 8 # default state
-
-        # Exploration-exploitation trade-off 
-        exploration_rate_threshold = random.uniform(0,1)
-        if exploration_rate_threshold > exploration_rate:
-            action = np.argmax(q_table[state])
-        else:
-            action = env.action_space.sample()
-        
-        # Take new action
-        for _ in range(frame_skip):
-            obs, reward, terminated, truncated, info = env.step(action)
-            if terminated or truncated:
-                done = True
-                break
-        
-        
-        new_state = make_action(obs, info, action)
-
-        # Update Q-table 
-        q_table[state][action] = (1 - learning_rate) * q_table[state][action] + learning_rate * (reward + discount_rate * np.max(q_table[new_state]))
-
-        # Set new state 
-        state = new_state
-
-        # Add new reward
-        rewards_current_episode += reward
-
-        if done == True: 
-            break
-    
-    # Exploration rate decay 
-    exploration_rate = min_exploration_rate + (max_exploration_rate - min_exploration_rate) * np.exp(-exploration_decay_rate*episode)
-    print("Exploration rate: " + str(exploration_rate))
-    print(q_table)
-    # Add current episode reward to total rewards List
-    rewards_all_episodes.append(rewards_current_episode)
-
-    pr.disable()
-    pr.dump_stats('make_action2.profile')
-
-# Calculate and print the average reward per thousand episodes
-
-# rewards_per_thousand_episodes = np.split(np.array(rewards_all_episodes),num_episodes/1000)
-# count = 1000
-
-# print("********Average reward per thousand episodes********\n")
-# for r in rewards_per_thousand_episodes:
-#     print(count, ": ", str(sum(r/1000)))
-#     count += 1000#Print the updates Q-Table
-# print("\n\n*******Q-Table*******\n")
-# print(q_table)
-
-# save q_table
-with open('q_table.pkl', 'wb') as f:
-    pickle.dump(q_table, f)
-
-# load q_table
-
-with open('q_table.pkl', 'rb') as f:
-    q_table = pickle.load(f)
-
-# Test the agent
-# Watch our agent play Super Mario by playing the best action
-for episode in range(3): 
-    # initialize new episode params
-    env.reset()
-
-    need_long_jump = False
-    done = False
-    state = 8 # default state
-
-    print("*******Episode ", episode+1, "*******\n\n\n\n")
-    time.sleep(1)
-
-    for step in range(max_steps_per_episode): 
-        # Show current state of environment on screen
-        # env.render()
-        # Choose action with highest Q-value for current state
-        action = np.argmax(q_table[state])
-
-        # Take new action
-        obs, reward, done, truncated, info = env.step(action)
-        new_state = make_action(obs, info, action)
-        time.sleep(0.3)
-        if done: 
-            if reward == 1: 
-                # Agent reached the goal and won episode
-                print("****You reached the goal****")
-                time.sleep(3)
-            else: 
-                # Agent stepped in a hole and lost episode
-                print("****You lost****")
-                time.sleep(3)
-            break
-        # Set new state
-        state = new_state
+need_long_jump = False
+obs = None
+done = True
+env.reset()
+for step in range(100000):
+    if obs is not None:
+        action = make_action(obs, info, step, env, action)
+    else:
+        action = 1
+    obs, reward, terminated, truncated, info = env.step(action)
+    done = terminated or truncated
+    # cap screen
+    # cv.imwrite('screenshot.png', cv.cvtColor(obs, cv.COLOR_RGB2BGR))
+    if done:
+        env.reset()
 env.close()

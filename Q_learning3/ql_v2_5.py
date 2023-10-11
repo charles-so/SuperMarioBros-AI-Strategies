@@ -274,11 +274,11 @@ def mario_in_mid_air(mario_location, enemy_locations, block_locations, horizonta
 # Q Learning
 
 # Q-table (5 states x 7 actions)
-def save_q_table(filename='q_table.pkl'):
+def save_q_table(filename='q_table2.pkl'):
     with open(filename, 'wb') as f:
         pickle.dump(Q, f)
 
-def load_q_table(filename='q_table.pkl'):
+def load_q_table(filename='q_table2.pkl'):
     try:
         with open(filename, 'rb') as f:
             return pickle.load(f)
@@ -291,7 +291,13 @@ alpha = 0.1
 # discount factor: A value closer to 1 makes the agent prioritize long-term reward over short-term reward.
 gamma = 0.9
 # exploration probability: A value closer to 1 makes the agent the agent explore a random action rather than exploit the best known action
-epsilon = 0.1
+epsilon = 1
+max_epsilon = 1
+min_epsilon = 0.01
+epsilon_decay_rate = 0.01
+
+biased_actions = [0, 1, 2, 2, 2, 3, 4, 5, 6]
+
 
 # ################################################################################
 def get_state(screen, info, step, env, prev_action):
@@ -327,23 +333,13 @@ def get_state(screen, info, step, env, prev_action):
     # # state 5 (default) -> mario doesn't see anything yet
     return 5
 
-def make_action(obs, info, step, env, prev_action):
-    current_state = get_state(obs, info, step, env, prev_action)
+def make_action(obs, info, step, env, action):
+    if obs is None:
+        current_state = 5
 
-    # 2. Explore or Exploit
-    if np.random.uniform(0, 1) < epsilon:
-        action = env.action_space.sample()  # explore
-    else:
-        action = np.argmax(Q[current_state, :])  # exploit
+    
 
-    # Take the action and get the new state and reward
-    new_obs, reward, terminated, truncated, info = env.step(action)
-    new_state = get_state(new_obs, info, step + 1, env, action)
-
-    # 3. Update Q-values
-    Q[current_state, action] = Q[current_state, action] + alpha * (reward + gamma * np.max(Q[new_state, :]) - Q[current_state, action])
-
-    return action, terminated, truncated, info
+    return action, reward, terminated, truncated, info
 
 def print_q_table():
     state_names = ["Mid-Air", "Gap-R", "Enemy-LR", "Pipe-LR", "Block-LR", "Default"]
@@ -359,28 +355,61 @@ def print_q_table():
 env = gym.make("SuperMarioBros-v0", apply_api_compatibility=True, render_mode="human")
 env = JoypadSpace(env, SIMPLE_MOVEMENT)
 
-Q = load_q_table()
+# Q = load_q_table()
+Q = np.zeros((6, 7))
 
 # Number of episodes
 num_episodes = 1000
 
+# Total reward and reward list
+total_rewards = []
+
+current_state = -1
+
 for episode in range(num_episodes):
     try:  # Start of the try block
         print(f"Starting episode {episode + 1}/{num_episodes}")
+        print("Exploration rate: " + str(epsilon))
         obs = None
         done = True
+        # Rewards
+        total_training_rewards = 0
         env.reset()
-        for step in range(100000):
-            print_q_table()
-            if obs is not None:
-                action, terminated, truncated, info = make_action(obs, info, step, env, action)
+        for step in range(1000):
+            if obs is None:
+                current_state = 5
+            
+            # 2. Explore or Exploit
+            if np.random.uniform(0, 1) < epsilon:
+                action = env.action_space.sample()  # explore
             else:
-                action = 1  # or some other initialization logic for the action
-                obs, reward, terminated, truncated, info = env.step(action)
+                action = np.argmax(Q[current_state, :])  # exploit
+
+            # 3. Take the action and get the new state and reward
+            new_obs, reward, terminated, truncated, info = env.step(action)
+            new_state = get_state(new_obs, info, step + 1, env, action)
+
+            current_state = new_state
+
+            # 4. Update Q-values
+            Q[current_state, action] = Q[current_state, action] + alpha * (reward + gamma * np.max(Q[new_state, :]) - Q[current_state, action])
+            # Add new reward to total reward
+
+            total_training_rewards += reward
             done = terminated or truncated
+
             if done:
+                print("end")
                 save_q_table()
-                break  # Break out of the step loop when Mario dies
+                break  # Break out of the step loop when reaches the end
+        
+        # Decay epsilon
+        epsilon = min_epsilon + (max_epsilon - min_epsilon) * np.exp(-epsilon_decay_rate*episode)
+
+        # Add total reward to reward list
+        total_rewards.append(total_training_rewards)
+        print(f"Episode {episode + 1} reward: {total_training_rewards}")
+        print_q_table()
         save_q_table()
     except Exception as e:  # Catch any error
         save_q_table()

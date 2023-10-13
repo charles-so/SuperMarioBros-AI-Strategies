@@ -300,7 +300,7 @@ def mario_in_mid_air(mario_location, enemy_locations, block_locations, horizonta
 # ################################################################################
 # Q Learning
 
-def generate_descriptor(datetime_flag=True, hardcoded_string="default"):
+def generate_descriptor(datetime_flag=False, hardcoded_string="default"):
     if datetime_flag:
         now = datetime.now()
         descriptor = now.strftime("%m_%d") 
@@ -502,7 +502,6 @@ for episode in range(num_episodes):
         for step in range(1000000):
             if obs is None:
                 current_state = 5
-            print_q_table()
             # 2. Explore or Exploit
             if np.random.uniform(0, 1) < epsilon:
                 action = env.action_space.sample()  # explore
@@ -535,8 +534,10 @@ for episode in range(num_episodes):
         print(f"Episode {episode + 1} reward: {total_training_rewards}")
         # print_q_table()
         save_q_table(descriptor)
+        print_q_table()
     except Exception as e:  # Catch any error
         save_q_table(descriptor)
+        print_q_table()
         if not os.path.exists('./errors'):
             os.makedirs('./errors')
         error_file_path = "./errors/error_log.txt"

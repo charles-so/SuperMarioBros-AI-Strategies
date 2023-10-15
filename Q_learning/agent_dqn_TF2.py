@@ -6,6 +6,9 @@ import tensorflow as tf
 from tensorflow.keras import layers, Model
 from tensorflow.keras.optimizers import Adam
 
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
 class DQNAgent:
     def __init__(self, states, actions, max_memory, double_q):
         self.states = states

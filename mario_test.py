@@ -8,6 +8,7 @@ done = True
 env.reset()
 for step in range(5000):
     action = env.action_space.sample()
+    print(action)
     obs, reward, terminated, truncated, info = env.step(action)
     done = terminated or truncated
     if done:

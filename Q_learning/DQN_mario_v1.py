@@ -1,10 +1,11 @@
 # Q - learning algorithm for super mario bros
+from nes_py.wrappers import JoypadSpace
+
 import gym
 from gym.wrappers import FrameStack
 import gym_super_mario_bros
 from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
 
-from nes_py.wrappers import JoypadSpace
 
 import time
 import numpy as np
@@ -23,8 +24,9 @@ save_path = "saved_models"
 if not os.path.exists(save_path):
     os.makedirs(save_path)
 
-env = gym.make("SuperMarioBros-v0", apply_api_compatibility=True)
+env = gym.make("SuperMarioBros-v0", apply_api_compatibility=True, render_mode="human")
 env = JoypadSpace(env, SIMPLE_MOVEMENT)
+env.reset()
 
 # Call Wrappers
 env = SkipFrame(env, skip=4)
@@ -33,16 +35,18 @@ env = GrayScaleObservation(env)
 env = FrameStack(env, num_stack=4)
 
 print("Observation space:", env.observation_space)
+print("Action space:", env.action_space)
 
 # Parameters
 states = (120, 128, 4)
 actions = env.action_space.n
+print(actions)
 
 # Agent
-agent = DQNAgent(states=states, actions=actions, max_memory=100000, double_q=False)
+agent = DQNAgent(states=states, actions=actions, max_memory=100000, double_q=True)
 
 # Episodes
-episodes = 10000
+episodes = 100
 rewards = []
 
 # Timing
@@ -66,17 +70,25 @@ for e in range(episodes):
 
     while True:
         # Show env (disabled)
-        # env.render()
-
+        env.render()
+        
+        # Run agent to get action and predict Q-values
+        q_values = agent.predict(agent.model, np.expand_dims(state, 0))
         # Run agent
         action = agent.run(state=state)
+
+        # print(f"Q-values: {q_values} , Action taken: {action}")
         #print(state.shape)
         #print(type(state))
         #print(state)
-        next_state, reward, terminated, truncated, info = env.step(action = action)
+        #action = env.action_space.sample()
+        #print(action)
+        next_state, reward, terminated, truncated, info = env.step(action)
         next_state = np.array(next_state)
         next_state = np.squeeze(next_state, axis=-1)
         next_state = np.transpose(next_state, (1, 2, 0))
+
+        time.sleep(0.1)
 
         # Remember transition
         agent.add(experience=(state, next_state, action, reward, terminated))
@@ -86,6 +98,11 @@ for e in range(episodes):
 
         # Total reward
         total_reward += reward
+
+        if np.array_equal(state, next_state):
+            print("State has not changed.")
+        else:
+            print("State has changed.")
 
         # Update state
         state = next_state
@@ -113,7 +130,6 @@ for e in range(episodes):
                                        r=np.mean(rewards[-100:])))
         start = time.time()
         step = agent.step
-    
+env.close()
 agent.model.save(os.path.join(save_path, "final_model.h5"))
 np.save('rewards.npy', rewards)
-env.close()

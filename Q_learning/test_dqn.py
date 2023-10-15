@@ -36,7 +36,7 @@ done = False
 total_reward = 0
 
 while not done:
-    env.render()
+    # env.render()
     state_for_prediction = np.expand_dims(state, axis=0)  # Add a batch dimension
 
     # Choose the action based on Q-values (No exploration)
